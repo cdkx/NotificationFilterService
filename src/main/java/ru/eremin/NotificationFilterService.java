@@ -80,6 +80,10 @@ public class NotificationFilterService {
             return true;
         }
 
+        if (!settings.notificationsEnabled()) {
+            return false;
+        }
+
         //Проверяем allowedChannels (если не пустой, содержит ли тип уведомления?)
         if (!settings.allowedChannels().isEmpty()
                 && !settings.allowedChannels().contains(notification.notificationType())) {

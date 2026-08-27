@@ -24,7 +24,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-
 @ExtendWith(MockitoExtension.class)
 @DisplayName("NotificationFilterService")
 class NotificationFilterServiceTest {
@@ -49,13 +48,15 @@ class NotificationFilterServiceTest {
         return new Notification(id, type, receiverId, senderId, "Test message " + id);
     }
 
-    private PreferenceSettings createPreferences(Set<NotificationType> channels, Set<Integer> blockedSenders) {
-        return new PreferenceSettings(channels, blockedSenders);
+    private PreferenceSettings createPreferences(boolean notificationsEnabled,
+                                                 Set<NotificationType> channels,
+                                                 Set<Integer> blockedSenders) {
+        return new PreferenceSettings(notificationsEnabled, channels, blockedSenders);
     }
 
     private void setupAllAllowed() {
         when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(NotificationType.EMAIL, NotificationType.SMS, NotificationType.PUSH), Set.of())));
+                .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(NotificationType.EMAIL, NotificationType.SMS, NotificationType.PUSH), Set.of())));
         when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class)))
                 .thenReturn(Map.of());
     }
@@ -80,8 +81,8 @@ class NotificationFilterServiceTest {
         @DisplayName("TC2: У пользователя нет настроек (null в Map)")
         void shouldPassWhenNoPreferences() {
             Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
-            when(preferenceSettingsProvider.getPreferencesByIds(anySet())).thenReturn(Map.of());
-            when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class))).thenReturn(Map.of());
+            when(preferenceSettingsProvider.getPreferencesByIds(Set.of(RECEIVER_ID))).thenReturn(Map.of());
+            when(historyNotificationsProvider.getSentNotificationIds(eq(Set.of(RECEIVER_ID)), any(Instant.class))).thenReturn(Map.of());
 
             List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
 
@@ -89,11 +90,11 @@ class NotificationFilterServiceTest {
         }
 
         @Test
-        @DisplayName("TC3: У пользователя пустой список разрешенных каналов")
-        void shouldPassWhenAllowedChannelsEmpty() {
+        @DisplayName("TC3: notificationsEnabled=true + пустой allowedChannels = всё разрешено")
+        void shouldPassWhenNotificationsEnabledAndEmptyChannels() {
             Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
             when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(), Set.of())));
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(), Set.of())));
             when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class))).thenReturn(Map.of());
 
             List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
@@ -122,7 +123,7 @@ class NotificationFilterServiceTest {
         void shouldFilterByChannel() {
             Notification notification = createNotification(1, NotificationType.SMS, RECEIVER_ID, SENDER_ID);
             when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(NotificationType.EMAIL), Set.of())));
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(NotificationType.EMAIL), Set.of())));
             when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class))).thenReturn(Map.of());
 
             List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
@@ -135,7 +136,7 @@ class NotificationFilterServiceTest {
         void shouldFilterByBlockedSender() {
             Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
             when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(NotificationType.EMAIL), Set.of(SENDER_ID))));
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(NotificationType.EMAIL), Set.of(SENDER_ID))));
             when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class))).thenReturn(Map.of());
 
             List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
@@ -148,9 +149,22 @@ class NotificationFilterServiceTest {
         void shouldFilterDuplicate() {
             Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
             when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(NotificationType.EMAIL), Set.of())));
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(NotificationType.EMAIL), Set.of())));
             when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class)))
                     .thenReturn(Map.of(RECEIVER_ID, Set.of(1)));
+
+            List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
+
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        @DisplayName("TC12: notificationsEnabled=false блокирует ВСЕ уведомления")
+        void shouldFilterAllWhenNotificationsDisabled() {
+            Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
+            when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(false, Set.of(NotificationType.EMAIL, NotificationType.SMS), Set.of())));
+            when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class))).thenReturn(Map.of());
 
             List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
 
@@ -185,7 +199,7 @@ class NotificationFilterServiceTest {
         void shouldPassWhenNoHistory() {
             Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
             when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(NotificationType.EMAIL), Set.of())));
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(NotificationType.EMAIL), Set.of())));
             when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class)))
                     .thenReturn(Map.of());
 
@@ -202,7 +216,7 @@ class NotificationFilterServiceTest {
             Notification duplicate = createNotification(3, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
 
             when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
-                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(Set.of(NotificationType.EMAIL), Set.of())));
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(true, Set.of(NotificationType.EMAIL), Set.of())));
             when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class)))
                     .thenReturn(Map.of(RECEIVER_ID, Set.of(3)));
 
@@ -223,6 +237,19 @@ class NotificationFilterServiceTest {
             assertThrows(UnsupportedOperationException.class, () ->
                     result.add(createNotification(99, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID))
             );
+        }
+
+        @Test
+        @DisplayName("TC13: notificationsEnabled=false имеет приоритет над allowedChannels")
+        void shouldFilterAllEvenIfChannelsAllowed() {
+            Notification notification = createNotification(1, NotificationType.EMAIL, RECEIVER_ID, SENDER_ID);
+            when(preferenceSettingsProvider.getPreferencesByIds(anySet()))
+                    .thenReturn(Map.of(RECEIVER_ID, createPreferences(false, Set.of(NotificationType.EMAIL), Set.of())));
+            when(historyNotificationsProvider.getSentNotificationIds(anySet(), any(Instant.class))).thenReturn(Map.of());
+
+            List<Notification> result = service.getFilteredNotifications(List.of(notification), SENDER_ID);
+
+            assertTrue(result.isEmpty());
         }
     }
 

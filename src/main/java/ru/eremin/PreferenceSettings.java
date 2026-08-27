@@ -4,11 +4,12 @@ import java.util.Collections;
 import java.util.Set;
 
 public record PreferenceSettings(
+        boolean notificationsEnabled,
         Set<NotificationType> allowedChannels,
         Set<Integer> blockedSenders
 ) {
-    public PreferenceSettings(Set<NotificationType> allowedChannels, Set<Integer> blockedSenders) {
-        this.allowedChannels = allowedChannels == null ? Collections.emptySet() : Set.copyOf(allowedChannels);
-        this.blockedSenders = blockedSenders == null ? Collections.emptySet() : Set.copyOf(blockedSenders);
+    public PreferenceSettings {
+        allowedChannels = allowedChannels == null ? Collections.emptySet() : Set.copyOf(allowedChannels);
+        blockedSenders = blockedSenders == null ? Collections.emptySet() : Set.copyOf(blockedSenders);
     }
 }
